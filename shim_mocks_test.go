@@ -113,3 +113,110 @@ func (mock *PartitionRunnerMock) StopCalls() []struct {
 	mock.lockStop.RUnlock()
 	return calls
 }
+
+// Ensure, that NodeDelegateMock does implement NodeDelegate.
+// If this is not the case, regenerate this file with moq.
+var _ NodeDelegate = &NodeDelegateMock{}
+
+// NodeDelegateMock is a mock implementation of NodeDelegate.
+//
+// 	func TestSomethingThatUsesNodeDelegate(t *testing.T) {
+//
+// 		// make and configure a mocked NodeDelegate
+// 		mockedNodeDelegate := &NodeDelegateMock{
+// 			JoinFunc: func(addrs []string, finish func())  {
+// 				panic("mock out the Join method")
+// 			},
+// 			LeaseFunc: func()  {
+// 				panic("mock out the Lease method")
+// 			},
+// 		}
+//
+// 		// use mockedNodeDelegate in code that requires NodeDelegate
+// 		// and then make assertions.
+//
+// 	}
+type NodeDelegateMock struct {
+	// JoinFunc mocks the Join method.
+	JoinFunc func(addrs []string, finish func())
+
+	// LeaseFunc mocks the Lease method.
+	LeaseFunc func()
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Join holds details about calls to the Join method.
+		Join []struct {
+			// Addrs is the addrs argument value.
+			Addrs []string
+			// Finish is the finish argument value.
+			Finish func()
+		}
+		// Lease holds details about calls to the Lease method.
+		Lease []struct {
+		}
+	}
+	lockJoin  sync.RWMutex
+	lockLease sync.RWMutex
+}
+
+// Join calls JoinFunc.
+func (mock *NodeDelegateMock) Join(addrs []string, finish func()) {
+	if mock.JoinFunc == nil {
+		panic("NodeDelegateMock.JoinFunc: method is nil but NodeDelegate.Join was just called")
+	}
+	callInfo := struct {
+		Addrs  []string
+		Finish func()
+	}{
+		Addrs:  addrs,
+		Finish: finish,
+	}
+	mock.lockJoin.Lock()
+	mock.calls.Join = append(mock.calls.Join, callInfo)
+	mock.lockJoin.Unlock()
+	mock.JoinFunc(addrs, finish)
+}
+
+// JoinCalls gets all the calls that were made to Join.
+// Check the length with:
+//     len(mockedNodeDelegate.JoinCalls())
+func (mock *NodeDelegateMock) JoinCalls() []struct {
+	Addrs  []string
+	Finish func()
+} {
+	var calls []struct {
+		Addrs  []string
+		Finish func()
+	}
+	mock.lockJoin.RLock()
+	calls = mock.calls.Join
+	mock.lockJoin.RUnlock()
+	return calls
+}
+
+// Lease calls LeaseFunc.
+func (mock *NodeDelegateMock) Lease() {
+	if mock.LeaseFunc == nil {
+		panic("NodeDelegateMock.LeaseFunc: method is nil but NodeDelegate.Lease was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockLease.Lock()
+	mock.calls.Lease = append(mock.calls.Lease, callInfo)
+	mock.lockLease.Unlock()
+	mock.LeaseFunc()
+}
+
+// LeaseCalls gets all the calls that were made to Lease.
+// Check the length with:
+//     len(mockedNodeDelegate.LeaseCalls())
+func (mock *NodeDelegateMock) LeaseCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockLease.RLock()
+	calls = mock.calls.Lease
+	mock.lockLease.RUnlock()
+	return calls
+}
