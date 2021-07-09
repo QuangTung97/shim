@@ -19,3 +19,17 @@ type partitionState struct {
 	current  NodeName
 	expected NodeName
 }
+
+//go:generate moq -out shim_mocks_test.go . PartitionRunner
+
+// PartitionRunner ...
+type PartitionRunner interface {
+	Start(partition PartitionID, finish func())
+	Stop()
+}
+
+// Timer ...
+type Timer interface {
+	Reset()
+	Stop()
+}
