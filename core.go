@@ -6,20 +6,6 @@ import (
 	"time"
 )
 
-type partitionStatus int
-
-const (
-	partitionStatusInit partitionStatus = iota
-	partitionStatusRunning
-	partitionStatusWaitingFinish
-)
-
-type partitionState struct {
-	status   partitionStatus
-	current  string
-	expected string
-}
-
 type nodeStatus int
 
 const (

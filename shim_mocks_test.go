@@ -17,10 +17,10 @@ var _ PartitionRunner = &PartitionRunnerMock{}
 //
 // 		// make and configure a mocked PartitionRunner
 // 		mockedPartitionRunner := &PartitionRunnerMock{
-// 			StartFunc: func(partition PartitionID, finish func())  {
+// 			StartFunc: func(partition PartitionID, startCompleted func())  {
 // 				panic("mock out the Start method")
 // 			},
-// 			StopFunc: func()  {
+// 			StopFunc: func(partition PartitionID, stopCompleted func())  {
 // 				panic("mock out the Stop method")
 // 			},
 // 		}
@@ -31,10 +31,10 @@ var _ PartitionRunner = &PartitionRunnerMock{}
 // 	}
 type PartitionRunnerMock struct {
 	// StartFunc mocks the Start method.
-	StartFunc func(partition PartitionID, finish func())
+	StartFunc func(partition PartitionID, startCompleted func())
 
 	// StopFunc mocks the Stop method.
-	StopFunc func()
+	StopFunc func(partition PartitionID, stopCompleted func())
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -42,11 +42,15 @@ type PartitionRunnerMock struct {
 		Start []struct {
 			// Partition is the partition argument value.
 			Partition PartitionID
-			// Finish is the finish argument value.
-			Finish func()
+			// StartCompleted is the startCompleted argument value.
+			StartCompleted func()
 		}
 		// Stop holds details about calls to the Stop method.
 		Stop []struct {
+			// Partition is the partition argument value.
+			Partition PartitionID
+			// StopCompleted is the stopCompleted argument value.
+			StopCompleted func()
 		}
 	}
 	lockStart sync.RWMutex
@@ -54,33 +58,33 @@ type PartitionRunnerMock struct {
 }
 
 // Start calls StartFunc.
-func (mock *PartitionRunnerMock) Start(partition PartitionID, finish func()) {
+func (mock *PartitionRunnerMock) Start(partition PartitionID, startCompleted func()) {
 	if mock.StartFunc == nil {
 		panic("PartitionRunnerMock.StartFunc: method is nil but PartitionRunner.Start was just called")
 	}
 	callInfo := struct {
-		Partition PartitionID
-		Finish    func()
+		Partition      PartitionID
+		StartCompleted func()
 	}{
-		Partition: partition,
-		Finish:    finish,
+		Partition:      partition,
+		StartCompleted: startCompleted,
 	}
 	mock.lockStart.Lock()
 	mock.calls.Start = append(mock.calls.Start, callInfo)
 	mock.lockStart.Unlock()
-	mock.StartFunc(partition, finish)
+	mock.StartFunc(partition, startCompleted)
 }
 
 // StartCalls gets all the calls that were made to Start.
 // Check the length with:
 //     len(mockedPartitionRunner.StartCalls())
 func (mock *PartitionRunnerMock) StartCalls() []struct {
-	Partition PartitionID
-	Finish    func()
+	Partition      PartitionID
+	StartCompleted func()
 } {
 	var calls []struct {
-		Partition PartitionID
-		Finish    func()
+		Partition      PartitionID
+		StartCompleted func()
 	}
 	mock.lockStart.RLock()
 	calls = mock.calls.Start
@@ -89,24 +93,33 @@ func (mock *PartitionRunnerMock) StartCalls() []struct {
 }
 
 // Stop calls StopFunc.
-func (mock *PartitionRunnerMock) Stop() {
+func (mock *PartitionRunnerMock) Stop(partition PartitionID, stopCompleted func()) {
 	if mock.StopFunc == nil {
 		panic("PartitionRunnerMock.StopFunc: method is nil but PartitionRunner.Stop was just called")
 	}
 	callInfo := struct {
-	}{}
+		Partition     PartitionID
+		StopCompleted func()
+	}{
+		Partition:     partition,
+		StopCompleted: stopCompleted,
+	}
 	mock.lockStop.Lock()
 	mock.calls.Stop = append(mock.calls.Stop, callInfo)
 	mock.lockStop.Unlock()
-	mock.StopFunc()
+	mock.StopFunc(partition, stopCompleted)
 }
 
 // StopCalls gets all the calls that were made to Stop.
 // Check the length with:
 //     len(mockedPartitionRunner.StopCalls())
 func (mock *PartitionRunnerMock) StopCalls() []struct {
+	Partition     PartitionID
+	StopCompleted func()
 } {
 	var calls []struct {
+		Partition     PartitionID
+		StopCompleted func()
 	}
 	mock.lockStop.RLock()
 	calls = mock.calls.Stop
@@ -127,8 +140,8 @@ var _ NodeDelegate = &NodeDelegateMock{}
 // 			JoinFunc: func(addrs []string, finish func())  {
 // 				panic("mock out the Join method")
 // 			},
-// 			LeaseFunc: func()  {
-// 				panic("mock out the Lease method")
+// 			LeaveFunc: func()  {
+// 				panic("mock out the Leave method")
 // 			},
 // 		}
 //
@@ -140,8 +153,8 @@ type NodeDelegateMock struct {
 	// JoinFunc mocks the Join method.
 	JoinFunc func(addrs []string, finish func())
 
-	// LeaseFunc mocks the Lease method.
-	LeaseFunc func()
+	// LeaveFunc mocks the Leave method.
+	LeaveFunc func()
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -152,12 +165,12 @@ type NodeDelegateMock struct {
 			// Finish is the finish argument value.
 			Finish func()
 		}
-		// Lease holds details about calls to the Lease method.
-		Lease []struct {
+		// Leave holds details about calls to the Leave method.
+		Leave []struct {
 		}
 	}
 	lockJoin  sync.RWMutex
-	lockLease sync.RWMutex
+	lockLeave sync.RWMutex
 }
 
 // Join calls JoinFunc.
@@ -195,28 +208,28 @@ func (mock *NodeDelegateMock) JoinCalls() []struct {
 	return calls
 }
 
-// Lease calls LeaseFunc.
-func (mock *NodeDelegateMock) Lease() {
-	if mock.LeaseFunc == nil {
-		panic("NodeDelegateMock.LeaseFunc: method is nil but NodeDelegate.Lease was just called")
+// Leave calls LeaveFunc.
+func (mock *NodeDelegateMock) Leave() {
+	if mock.LeaveFunc == nil {
+		panic("NodeDelegateMock.LeaveFunc: method is nil but NodeDelegate.Leave was just called")
 	}
 	callInfo := struct {
 	}{}
-	mock.lockLease.Lock()
-	mock.calls.Lease = append(mock.calls.Lease, callInfo)
-	mock.lockLease.Unlock()
-	mock.LeaseFunc()
+	mock.lockLeave.Lock()
+	mock.calls.Leave = append(mock.calls.Leave, callInfo)
+	mock.lockLeave.Unlock()
+	mock.LeaveFunc()
 }
 
-// LeaseCalls gets all the calls that were made to Lease.
+// LeaveCalls gets all the calls that were made to Leave.
 // Check the length with:
-//     len(mockedNodeDelegate.LeaseCalls())
-func (mock *NodeDelegateMock) LeaseCalls() []struct {
+//     len(mockedNodeDelegate.LeaveCalls())
+func (mock *NodeDelegateMock) LeaveCalls() []struct {
 } {
 	var calls []struct {
 	}
-	mock.lockLease.RLock()
-	calls = mock.calls.Lease
-	mock.lockLease.RUnlock()
+	mock.lockLeave.RLock()
+	calls = mock.calls.Leave
+	mock.lockLeave.RUnlock()
 	return calls
 }

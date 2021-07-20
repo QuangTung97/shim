@@ -7,14 +7,14 @@ type PartitionID uint32
 
 // PartitionRunner ...
 type PartitionRunner interface {
-	Start(partition PartitionID, finish func())
-	Stop()
+	Start(partition PartitionID, startCompleted func())
+	Stop(partition PartitionID, stopCompleted func())
 }
 
 // NodeDelegate ...
 type NodeDelegate interface {
 	Join(addrs []string, finish func())
-	Lease()
+	Leave()
 }
 
 // Timer ...
