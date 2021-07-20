@@ -20,14 +20,16 @@ type partitionState struct {
 }
 
 type partitionMsg struct {
-	current     string
 	incarnation uint64
+	current     string
+	left        bool
 }
 
 //go:generate moq -out partition_mocks_test.go . partitionDelegate
 
 type partitionDelegate interface {
 	start()
+	stop()
 	broadcast(msg partitionMsg)
 }
 
@@ -46,10 +48,16 @@ func newPartition(selfName string, delegate partitionDelegate) partition {
 }
 
 func (p *partition) handleStateChanged() {
-	if p.state.status != partitionStatusStopped {
-		return
+	switch p.state.status {
+	case partitionStatusStopped:
+		p.handleStateChangedWhenStopped()
+	case partitionStatusRunning:
+		p.handleStateChangedWhenRunning()
+	default:
 	}
+}
 
+func (p *partition) handleStateChangedWhenStopped() {
 	if p.state.owner != p.self {
 		return
 	}
@@ -60,6 +68,15 @@ func (p *partition) handleStateChanged() {
 
 	p.state.status = partitionStatusStarting
 	p.delegate.start()
+}
+
+func (p *partition) handleStateChangedWhenRunning() {
+	if p.state.owner == p.self {
+		return
+	}
+
+	p.state.status = partitionStatusStopping
+	p.delegate.stop()
 }
 
 func (p *partition) updateOwner(owner string) {
@@ -76,12 +93,30 @@ func (p *partition) completeStarting() {
 	}
 
 	p.state.incarnation++
+	p.state.status = partitionStatusRunning
+	p.state.current = p.self
+	p.state.left = false
+
 	p.delegate.broadcast(partitionMsg{
 		current:     p.self,
 		incarnation: p.state.incarnation,
 	})
-	p.state.status = partitionStatusRunning
-	p.state.current = p.self
+}
+
+func (p *partition) completeStopping() {
+	defer p.handleStateChanged()
+
+	if p.state.status != partitionStatusStopping {
+		return
+	}
+
+	p.state.status = partitionStatusStopped
+	p.state.left = true
+	p.delegate.broadcast(partitionMsg{
+		current:     p.self,
+		incarnation: p.state.incarnation,
+		left:        true,
+	})
 }
 
 func (p *partition) recvBroadcast(msg partitionMsg) {
@@ -101,7 +136,7 @@ func (p *partition) nodeLeave(name string) {
 func (s *partitionState) setCurrentState(msg partitionMsg) {
 	s.current = msg.current
 	s.incarnation = msg.incarnation
-	s.left = false
+	s.left = msg.left
 }
 
 func (s *partitionState) updateByMsg(msg partitionMsg) {
@@ -114,9 +149,19 @@ func (s *partitionState) updateByMsg(msg partitionMsg) {
 		return
 	}
 
+	if s.current > msg.current {
+		return
+	}
+
 	if s.current < msg.current {
 		s.setCurrentState(msg)
+		return
 	}
+
+	if s.left {
+		return
+	}
+	s.left = msg.left
 }
 
 type partitionAssigns map[string][]PartitionID

@@ -23,6 +23,9 @@ var _ partitionDelegate = &partitionDelegateMock{}
 // 			startFunc: func()  {
 // 				panic("mock out the start method")
 // 			},
+// 			stopFunc: func()  {
+// 				panic("mock out the stop method")
+// 			},
 // 		}
 //
 // 		// use mockedpartitionDelegate in code that requires partitionDelegate
@@ -36,6 +39,9 @@ type partitionDelegateMock struct {
 	// startFunc mocks the start method.
 	startFunc func()
 
+	// stopFunc mocks the stop method.
+	stopFunc func()
+
 	// calls tracks calls to the methods.
 	calls struct {
 		// broadcast holds details about calls to the broadcast method.
@@ -46,9 +52,13 @@ type partitionDelegateMock struct {
 		// start holds details about calls to the start method.
 		start []struct {
 		}
+		// stop holds details about calls to the stop method.
+		stop []struct {
+		}
 	}
 	lockbroadcast sync.RWMutex
 	lockstart     sync.RWMutex
+	lockstop      sync.RWMutex
 }
 
 // broadcast calls broadcastFunc.
@@ -105,5 +115,31 @@ func (mock *partitionDelegateMock) startCalls() []struct {
 	mock.lockstart.RLock()
 	calls = mock.calls.start
 	mock.lockstart.RUnlock()
+	return calls
+}
+
+// stop calls stopFunc.
+func (mock *partitionDelegateMock) stop() {
+	if mock.stopFunc == nil {
+		panic("partitionDelegateMock.stopFunc: method is nil but partitionDelegate.stop was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockstop.Lock()
+	mock.calls.stop = append(mock.calls.stop, callInfo)
+	mock.lockstop.Unlock()
+	mock.stopFunc()
+}
+
+// stopCalls gets all the calls that were made to stop.
+// Check the length with:
+//     len(mockedpartitionDelegate.stopCalls())
+func (mock *partitionDelegateMock) stopCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockstop.RLock()
+	calls = mock.calls.stop
+	mock.lockstop.RUnlock()
 	return calls
 }

@@ -304,6 +304,165 @@ func TestPartition_Recv_Broadcast_Higher_Name(t *testing.T) {
 	}, p.state)
 }
 
+func TestPartition_Recv_Broadcast_Then_Running(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	p.recvBroadcast(partitionMsg{
+		current:     "other-node",
+		incarnation: 2,
+	})
+
+	p.nodeLeave("other-node")
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	var broadcastMsg partitionMsg
+	delegate.broadcastFunc = func(msg partitionMsg) {
+		broadcastMsg = msg
+	}
+	p.completeStarting()
+
+	assert.Equal(t, 1, len(delegate.broadcastCalls()))
+	assert.Equal(t, partitionMsg{
+		current:     "self-node",
+		incarnation: 3,
+	}, broadcastMsg)
+	assert.Equal(t, partitionState{
+		status:      partitionStatusRunning,
+		owner:       "self-node",
+		current:     "self-node",
+		incarnation: 3,
+		left:        false,
+	}, p.state)
+}
+
+func TestPartition_Change_Owner_When_Starting__Do_Nothing(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	p.updateOwner("other-node")
+
+	assert.Equal(t, 1, len(delegate.startCalls()))
+	assert.Equal(t, partitionState{
+		status: partitionStatusStarting,
+		owner:  "other-node",
+	}, p.state)
+}
+
+func TestPartition_Change_Owner_When_Running(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	delegate.broadcastFunc = func(msg partitionMsg) {}
+	p.completeStarting()
+
+	delegate.stopFunc = func() {}
+	p.updateOwner("other-node")
+
+	assert.Equal(t, 1, len(delegate.startCalls()))
+	assert.Equal(t, 1, len(delegate.stopCalls()))
+
+	assert.Equal(t, partitionState{
+		status:      partitionStatusStopping,
+		owner:       "other-node",
+		current:     "self-node",
+		incarnation: 1,
+	}, p.state)
+}
+
+func TestPartition_CompleteStopping(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	delegate.broadcastFunc = func(msg partitionMsg) {}
+	p.completeStarting()
+
+	delegate.stopFunc = func() {}
+	p.updateOwner("other-node")
+
+	var broadcastMsg partitionMsg
+	delegate.broadcastFunc = func(msg partitionMsg) {
+		broadcastMsg = msg
+	}
+	p.completeStopping()
+
+	assert.Equal(t, partitionState{
+		status:      partitionStatusStopped,
+		owner:       "other-node",
+		current:     "self-node",
+		left:        true,
+		incarnation: 1,
+	}, p.state)
+	assert.Equal(t, 2, len(delegate.broadcastCalls()))
+	assert.Equal(t, partitionMsg{
+		current:     "self-node",
+		incarnation: 1,
+		left:        true,
+	}, broadcastMsg)
+}
+
+func TestPartition_Update_Owner_Back__Then_CompleteStopping(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	delegate.broadcastFunc = func(msg partitionMsg) {}
+	p.completeStarting()
+
+	delegate.stopFunc = func() {}
+	p.updateOwner("other-node")
+
+	p.updateOwner("self-node")
+
+	delegate.broadcastFunc = func(msg partitionMsg) {}
+	p.completeStopping()
+
+	assert.Equal(t, partitionState{
+		status:      partitionStatusStarting,
+		owner:       "self-node",
+		current:     "self-node",
+		left:        true,
+		incarnation: 1,
+	}, p.state)
+
+	assert.Equal(t, 2, len(delegate.broadcastCalls()))
+	assert.Equal(t, 2, len(delegate.startCalls()))
+}
+
+func TestPartition_CompleteStopping_Not_Stopping__Do_Nothing(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	p.completeStopping()
+
+	assert.Equal(t, partitionState{}, p.state)
+}
+
 func TestPartitionState_UpdateByMsg(t *testing.T) {
 	table := []struct {
 		name     string
@@ -324,10 +483,40 @@ func TestPartitionState_UpdateByMsg(t *testing.T) {
 			},
 		},
 		{
+			name: "from-empty-with-left",
+			prev: partitionState{},
+			msg: partitionMsg{
+				incarnation: 3,
+				current:     "node01",
+				left:        true,
+			},
+			expected: partitionState{
+				incarnation: 3,
+				current:     "node01",
+				left:        true,
+			},
+		},
+		{
 			name: "higher-incarnation",
 			prev: partitionState{
 				incarnation: 4,
 				current:     "node03",
+			},
+			msg: partitionMsg{
+				incarnation: 5,
+				current:     "node02",
+			},
+			expected: partitionState{
+				incarnation: 5,
+				current:     "node02",
+			},
+		},
+		{
+			name: "higher-incarnation-with-left",
+			prev: partitionState{
+				incarnation: 4,
+				current:     "node03",
+				left:        true,
 			},
 			msg: partitionMsg{
 				incarnation: 5,
@@ -373,6 +562,22 @@ func TestPartitionState_UpdateByMsg(t *testing.T) {
 			prev: partitionState{
 				incarnation: 4,
 				current:     "node03",
+			},
+			msg: partitionMsg{
+				incarnation: 4,
+				current:     "node05",
+			},
+			expected: partitionState{
+				incarnation: 4,
+				current:     "node05",
+			},
+		},
+		{
+			name: "same-incarnation-higher-name-with-left",
+			prev: partitionState{
+				incarnation: 4,
+				current:     "node03",
+				left:        true,
 			},
 			msg: partitionMsg{
 				incarnation: 4,
@@ -430,6 +635,23 @@ func TestPartitionState_UpdateByMsg(t *testing.T) {
 			expected: partitionState{
 				incarnation: 5,
 				current:     "node03",
+			},
+		},
+		{
+			name: "same-incarnation-same-name-left-after",
+			prev: partitionState{
+				incarnation: 4,
+				current:     "node03",
+			},
+			msg: partitionMsg{
+				incarnation: 4,
+				current:     "node03",
+				left:        true,
+			},
+			expected: partitionState{
+				incarnation: 4,
+				current:     "node03",
+				left:        true,
 			},
 		},
 	}
