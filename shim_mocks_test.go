@@ -137,7 +137,7 @@ var _ NodeDelegate = &NodeDelegateMock{}
 //
 // 		// make and configure a mocked NodeDelegate
 // 		mockedNodeDelegate := &NodeDelegateMock{
-// 			JoinFunc: func(addrs []string, finish func())  {
+// 			JoinFunc: func(addrs []string) error {
 // 				panic("mock out the Join method")
 // 			},
 // 			LeaveFunc: func()  {
@@ -151,7 +151,7 @@ var _ NodeDelegate = &NodeDelegateMock{}
 // 	}
 type NodeDelegateMock struct {
 	// JoinFunc mocks the Join method.
-	JoinFunc func(addrs []string, finish func())
+	JoinFunc func(addrs []string) error
 
 	// LeaveFunc mocks the Leave method.
 	LeaveFunc func()
@@ -162,8 +162,6 @@ type NodeDelegateMock struct {
 		Join []struct {
 			// Addrs is the addrs argument value.
 			Addrs []string
-			// Finish is the finish argument value.
-			Finish func()
 		}
 		// Leave holds details about calls to the Leave method.
 		Leave []struct {
@@ -174,33 +172,29 @@ type NodeDelegateMock struct {
 }
 
 // Join calls JoinFunc.
-func (mock *NodeDelegateMock) Join(addrs []string, finish func()) {
+func (mock *NodeDelegateMock) Join(addrs []string) error {
 	if mock.JoinFunc == nil {
 		panic("NodeDelegateMock.JoinFunc: method is nil but NodeDelegate.Join was just called")
 	}
 	callInfo := struct {
-		Addrs  []string
-		Finish func()
+		Addrs []string
 	}{
-		Addrs:  addrs,
-		Finish: finish,
+		Addrs: addrs,
 	}
 	mock.lockJoin.Lock()
 	mock.calls.Join = append(mock.calls.Join, callInfo)
 	mock.lockJoin.Unlock()
-	mock.JoinFunc(addrs, finish)
+	return mock.JoinFunc(addrs)
 }
 
 // JoinCalls gets all the calls that were made to Join.
 // Check the length with:
 //     len(mockedNodeDelegate.JoinCalls())
 func (mock *NodeDelegateMock) JoinCalls() []struct {
-	Addrs  []string
-	Finish func()
+	Addrs []string
 } {
 	var calls []struct {
-		Addrs  []string
-		Finish func()
+		Addrs []string
 	}
 	mock.lockJoin.RLock()
 	calls = mock.calls.Join
@@ -231,5 +225,106 @@ func (mock *NodeDelegateMock) LeaveCalls() []struct {
 	mock.lockLeave.RLock()
 	calls = mock.calls.Leave
 	mock.lockLeave.RUnlock()
+	return calls
+}
+
+// Ensure, that nodeListenerMock does implement nodeListener.
+// If this is not the case, regenerate this file with moq.
+var _ nodeListener = &nodeListenerMock{}
+
+// nodeListenerMock is a mock implementation of nodeListener.
+//
+// 	func TestSomethingThatUsesnodeListener(t *testing.T) {
+//
+// 		// make and configure a mocked nodeListener
+// 		mockednodeListener := &nodeListenerMock{
+// 			onChangeFunc: func(nodes []string)  {
+// 				panic("mock out the onChange method")
+// 			},
+// 			onJoinCompletedFunc: func()  {
+// 				panic("mock out the onJoinCompleted method")
+// 			},
+// 		}
+//
+// 		// use mockednodeListener in code that requires nodeListener
+// 		// and then make assertions.
+//
+// 	}
+type nodeListenerMock struct {
+	// onChangeFunc mocks the onChange method.
+	onChangeFunc func(nodes []string)
+
+	// onJoinCompletedFunc mocks the onJoinCompleted method.
+	onJoinCompletedFunc func()
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// onChange holds details about calls to the onChange method.
+		onChange []struct {
+			// Nodes is the nodes argument value.
+			Nodes []string
+		}
+		// onJoinCompleted holds details about calls to the onJoinCompleted method.
+		onJoinCompleted []struct {
+		}
+	}
+	lockonChange        sync.RWMutex
+	lockonJoinCompleted sync.RWMutex
+}
+
+// onChange calls onChangeFunc.
+func (mock *nodeListenerMock) onChange(nodes []string) {
+	if mock.onChangeFunc == nil {
+		panic("nodeListenerMock.onChangeFunc: method is nil but nodeListener.onChange was just called")
+	}
+	callInfo := struct {
+		Nodes []string
+	}{
+		Nodes: nodes,
+	}
+	mock.lockonChange.Lock()
+	mock.calls.onChange = append(mock.calls.onChange, callInfo)
+	mock.lockonChange.Unlock()
+	mock.onChangeFunc(nodes)
+}
+
+// onChangeCalls gets all the calls that were made to onChange.
+// Check the length with:
+//     len(mockednodeListener.onChangeCalls())
+func (mock *nodeListenerMock) onChangeCalls() []struct {
+	Nodes []string
+} {
+	var calls []struct {
+		Nodes []string
+	}
+	mock.lockonChange.RLock()
+	calls = mock.calls.onChange
+	mock.lockonChange.RUnlock()
+	return calls
+}
+
+// onJoinCompleted calls onJoinCompletedFunc.
+func (mock *nodeListenerMock) onJoinCompleted() {
+	if mock.onJoinCompletedFunc == nil {
+		panic("nodeListenerMock.onJoinCompletedFunc: method is nil but nodeListener.onJoinCompleted was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockonJoinCompleted.Lock()
+	mock.calls.onJoinCompleted = append(mock.calls.onJoinCompleted, callInfo)
+	mock.lockonJoinCompleted.Unlock()
+	mock.onJoinCompletedFunc()
+}
+
+// onJoinCompletedCalls gets all the calls that were made to onJoinCompleted.
+// Check the length with:
+//     len(mockednodeListener.onJoinCompletedCalls())
+func (mock *nodeListenerMock) onJoinCompletedCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockonJoinCompleted.RLock()
+	calls = mock.calls.onJoinCompleted
+	mock.lockonJoinCompleted.RUnlock()
 	return calls
 }

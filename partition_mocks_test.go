@@ -21,7 +21,7 @@ var _ partitionDelegate = &partitionDelegateMock{}
 // 				panic("mock out the broadcast method")
 // 			},
 // 			startFunc: func()  {
-// 				panic("mock out the start method")
+// 				panic("mock out the startJoin method")
 // 			},
 // 			stopFunc: func()  {
 // 				panic("mock out the stop method")
@@ -36,7 +36,7 @@ type partitionDelegateMock struct {
 	// broadcastFunc mocks the broadcast method.
 	broadcastFunc func(msg partitionMsg)
 
-	// startFunc mocks the start method.
+	// startFunc mocks the startJoin method.
 	startFunc func()
 
 	// stopFunc mocks the stop method.
@@ -49,7 +49,7 @@ type partitionDelegateMock struct {
 			// Msg is the msg argument value.
 			Msg partitionMsg
 		}
-		// start holds details about calls to the start method.
+		// startJoin holds details about calls to the startJoin method.
 		start []struct {
 		}
 		// stop holds details about calls to the stop method.
@@ -92,10 +92,10 @@ func (mock *partitionDelegateMock) broadcastCalls() []struct {
 	return calls
 }
 
-// start calls startFunc.
+// startJoin calls startFunc.
 func (mock *partitionDelegateMock) start() {
 	if mock.startFunc == nil {
-		panic("partitionDelegateMock.startFunc: method is nil but partitionDelegate.start was just called")
+		panic("partitionDelegateMock.startFunc: method is nil but partitionDelegate.startJoin was just called")
 	}
 	callInfo := struct {
 	}{}
@@ -105,7 +105,7 @@ func (mock *partitionDelegateMock) start() {
 	mock.startFunc()
 }
 
-// startCalls gets all the calls that were made to start.
+// startCalls gets all the calls that were made to startJoin.
 // Check the length with:
 //     len(mockedpartitionDelegate.startCalls())
 func (mock *partitionDelegateMock) startCalls() []struct {

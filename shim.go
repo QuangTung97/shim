@@ -3,7 +3,7 @@ package shim
 // PartitionID ...
 type PartitionID uint32
 
-//go:generate moq -out shim_mocks_test.go . PartitionRunner NodeDelegate
+//go:generate moq -out shim_mocks_test.go . PartitionRunner NodeDelegate nodeListener
 
 // PartitionRunner ...
 type PartitionRunner interface {
@@ -13,8 +13,13 @@ type PartitionRunner interface {
 
 // NodeDelegate ...
 type NodeDelegate interface {
-	Join(addrs []string, finish func())
+	Join(addrs []string) error
 	Leave()
+}
+
+type nodeListener interface {
+	onChange(nodes []string)
+	onJoinCompleted()
 }
 
 // Timer ...
