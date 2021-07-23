@@ -97,10 +97,7 @@ func (p *partition) completeStarting() {
 	p.state.current = p.self
 	p.state.left = false
 
-	p.delegate.broadcast(partitionMsg{
-		current:     p.self,
-		incarnation: p.state.incarnation,
-	})
+	p.delegate.broadcast(p.getPartitionMsg())
 }
 
 func (p *partition) completeStopping() {
@@ -112,11 +109,8 @@ func (p *partition) completeStopping() {
 
 	p.state.status = partitionStatusStopped
 	p.state.left = true
-	p.delegate.broadcast(partitionMsg{
-		current:     p.self,
-		incarnation: p.state.incarnation,
-		left:        true,
-	})
+
+	p.delegate.broadcast(p.getPartitionMsg())
 }
 
 func (p *partition) recvBroadcast(msg partitionMsg) {
@@ -130,6 +124,14 @@ func (p *partition) nodeLeave(name string) {
 
 	if p.state.current == name {
 		p.state.left = true
+	}
+}
+
+func (p *partition) getPartitionMsg() partitionMsg {
+	return partitionMsg{
+		incarnation: p.state.incarnation,
+		current:     p.state.current,
+		left:        p.state.left,
 	}
 }
 

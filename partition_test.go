@@ -463,6 +463,79 @@ func TestPartition_CompleteStopping_Not_Stopping__Do_Nothing(t *testing.T) {
 	assert.Equal(t, partitionState{}, p.state)
 }
 
+func TestPartition_GetPartitionMsg__Init(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	msg := p.getPartitionMsg()
+	assert.Equal(t, partitionMsg{
+		incarnation: 0,
+		current:     "",
+		left:        false,
+	}, msg)
+}
+
+func TestPartition_GetPartitionMsg__WhenRunning(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	assert.Equal(t, partitionMsg{
+		incarnation: 0,
+		current:     "",
+		left:        false,
+	}, p.getPartitionMsg())
+
+	delegate.broadcastFunc = func(msg partitionMsg) {}
+	p.completeStarting()
+
+	assert.Equal(t, partitionMsg{
+		incarnation: 1,
+		current:     "self-node",
+		left:        false,
+	}, p.getPartitionMsg())
+}
+
+func TestPartition_GetPartitionMsg__When_Stopped(t *testing.T) {
+	t.Parallel()
+
+	delegate := &partitionDelegateMock{}
+	p := newPartition("self-node", delegate)
+
+	delegate.startFunc = func() {}
+	p.updateOwner("self-node")
+
+	p.updateOwner("other-node")
+
+	delegate.stopFunc = func() {}
+	delegate.broadcastFunc = func(msg partitionMsg) {}
+	p.completeStarting()
+
+	assert.Equal(t, 1, len(delegate.stopCalls()))
+	assert.Equal(t, 1, len(delegate.broadcastCalls()))
+
+	assert.Equal(t, partitionMsg{
+		current:     "self-node",
+		incarnation: 1,
+		left:        false,
+	}, p.getPartitionMsg())
+
+	p.completeStopping()
+	assert.Equal(t, 2, len(delegate.broadcastCalls()))
+
+	assert.Equal(t, partitionMsg{
+		current:     "self-node",
+		incarnation: 1,
+		left:        true,
+	}, p.getPartitionMsg())
+}
+
 func TestPartitionState_UpdateByMsg(t *testing.T) {
 	table := []struct {
 		name     string
