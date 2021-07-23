@@ -8,8 +8,8 @@ type sequenceManager struct {
 
 func newSequenceManager(size int) *sequenceManager {
 	return &sequenceManager{
-		first:     0,
-		last:      0,
+		first:     1,
+		last:      1,
 		sequences: make([]bool, size),
 	}
 }
@@ -40,7 +40,7 @@ func (m *sequenceManager) clearTo(to uint64) {
 	}
 }
 
-func (m *sequenceManager) cleanAndSetMin() {
+func (m *sequenceManager) clearAndSetFirst() {
 	from := m.first
 	if m.last > m.first+m.size() {
 		from = m.last - m.size()
@@ -62,8 +62,9 @@ func (m *sequenceManager) setCompleted(seq uint64) {
 		m.last = seq + 1
 	}
 
-	m.cleanAndSetMin()
+	m.clearAndSetFirst()
 	m.sequences[seq%m.size()] = true
+	m.clearAndSetFirst()
 }
 
 func (m *sequenceManager) setAllCompleted(seq uint64) {
@@ -72,4 +73,8 @@ func (m *sequenceManager) setAllCompleted(seq uint64) {
 	}
 	m.first = seq + 1
 	m.last = seq + 1
+}
+
+func (m *sequenceManager) uncompletedFrom() uint64 {
+	return m.first
 }
