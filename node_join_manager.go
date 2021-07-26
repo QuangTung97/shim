@@ -125,7 +125,13 @@ func (m *nodeJoinManager) notifyMsg(msg nodeLeftMsg) {
 	defer m.mut.Unlock()
 
 	m.version++
-	m.nodes = nodeGracefulLeave(m.nodes, msg.name, msg.addr, m.staticAddrs, m.getNow(), m.gracefulLeftExpire)
+
+	var changed bool
+	m.nodes, changed = nodeGracefulLeave(m.nodes, msg.name, msg.addr, m.staticAddrs, m.getNow(), m.gracefulLeftExpire)
+
+	if changed {
+		// TODO
+	}
 }
 
 func removeSelfAddrInConfiguredStaticAddrs(configured []string, selfAddr string) []string {
@@ -139,33 +145,83 @@ func removeSelfAddrInConfiguredStaticAddrs(configured []string, selfAddr string)
 	return result
 }
 
+type addressNodeState struct {
+	name   string
+	status nodeStatus
+	leftAt time.Time
+}
+
+func compressAddressNodeStates(
+	nodes []addressNodeState, configured bool,
+	now time.Time, expire time.Duration,
+) []addressNodeState {
+	var filtered []addressNodeState
+	for _, n := range nodes {
+		if n.status == nodeStatusGracefulLeft {
+			if !n.leftAt.Add(expire).After(now) {
+				continue
+			}
+		}
+		filtered = append(filtered, n)
+	}
+
+	if len(filtered) == 0 && configured {
+		maxLeftAt := nodes[0].leftAt
+		maxIndex := 0
+		for i, n := range nodes[1:] {
+			if n.leftAt.After(maxLeftAt) {
+				maxLeftAt = n.leftAt
+				maxIndex = i + 1
+			}
+		}
+
+		maxNode := nodes[maxIndex]
+		return []addressNodeState{maxNode}
+	}
+
+	return filtered
+}
+
 func computeKeptNodes(
-	nodes map[string]nodeState, newJoinAddr string,
+	nodes map[string]nodeState,
 	configured []string, now time.Time, expire time.Duration,
-) map[string][]string {
+) map[string]nodeState {
 	configuredSet := map[string]struct{}{}
 	for _, a := range configured {
 		configuredSet[a] = struct{}{}
 	}
 
-	keep := map[string][]string{}
+	addressMap := map[string][]addressNodeState{}
 	for key, n := range nodes {
-		if n.status == nodeStatusGracefulLeft {
-			if n.addr == newJoinAddr {
-				continue
-			}
+		addressMap[n.addr] = append(addressMap[n.addr], addressNodeState{
+			name:   key,
+			status: n.status,
+			leftAt: n.leftAt,
+		})
+	}
 
-			if !n.leftAt.Add(expire).After(now) {
-				continue
-			}
-			_, existed := configuredSet[n.addr]
-			if !existed {
-				continue
+	filteredAddressMap := map[string][]addressNodeState{}
+	for addr, list := range addressMap {
+		_, existed := configuredSet[addr]
+
+		compressed := compressAddressNodeStates(list, existed, now, expire)
+		if len(compressed) == 0 {
+			continue
+		}
+		filteredAddressMap[addr] = compressed
+	}
+
+	result := map[string]nodeState{}
+	for addr, list := range filteredAddressMap {
+		for _, n := range list {
+			result[n.name] = nodeState{
+				status: n.status,
+				addr:   addr,
+				leftAt: n.leftAt,
 			}
 		}
-		keep[n.addr] = append(keep[n.addr], key)
 	}
-	return keep
+	return result
 }
 
 func cloneNodeStates(input map[string]nodeState) map[string]nodeState {
@@ -174,16 +230,6 @@ func cloneNodeStates(input map[string]nodeState) map[string]nodeState {
 		nodes[k] = v
 	}
 	return nodes
-}
-
-func keptNodesToNodeMap(keep map[string][]string, nodes map[string]nodeState) map[string]nodeState {
-	result := map[string]nodeState{}
-	for _, list := range keep {
-		for _, n := range list {
-			result[n] = nodes[n]
-		}
-	}
-	return result
 }
 
 func nodeJoin(
@@ -196,23 +242,26 @@ func nodeJoin(
 		addr:   addr,
 	}
 
-	keep := computeKeptNodes(nodes, addr, configured, now, expire)
-	return keptNodesToNodeMap(keep, nodes)
+	return computeKeptNodes(nodes, configured, now, expire)
 }
 
 func nodeGracefulLeave(
 	inputNodes map[string]nodeState, name string, addr string,
 	configured []string, now time.Time, expire time.Duration,
-) map[string]nodeState {
+) (map[string]nodeState, bool) {
 	nodes := cloneNodeStates(inputNodes)
+
+	prev, ok := nodes[name]
+	if ok && prev.status == nodeStatusGracefulLeft {
+		return computeKeptNodes(nodes, configured, now, expire), false
+	}
+
 	nodes[name] = nodeState{
 		status: nodeStatusGracefulLeft,
 		addr:   addr,
 		leftAt: now,
 	}
-
-	keep := computeKeptNodes(nodes, "", configured, now, expire)
-	return keptNodesToNodeMap(keep, nodes)
+	return computeKeptNodes(nodes, configured, now, expire), true
 }
 
 func nodeLeave(
@@ -224,7 +273,5 @@ func nodeLeave(
 	if ok && node.status == nodeStatusAlive {
 		delete(nodes, name)
 	}
-
-	keep := computeKeptNodes(nodes, "", configured, now, expire)
-	return keptNodesToNodeMap(keep, nodes)
+	return computeKeptNodes(nodes, configured, now, expire)
 }

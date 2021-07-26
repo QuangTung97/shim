@@ -325,10 +325,40 @@ func TestNodeJoin(t *testing.T) {
 				addr: "address02",
 			},
 		}, result)
+	})
+
+	t.Run("left-nodes-with-same-addr-both-expired-but-still-exist-one", func(t *testing.T) {
+		nodes := map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+			"node02": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+			},
+		}
+
+		result := nodeJoin(nodes, "node03", "address02",
+			[]string{"address01", "address02"},
+			mustParse("2021-07-26T10:00:40+07:00"), 30*time.Second)
+
+		assert.Equal(t, map[string]nodeState{
+			"node02": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+			},
+			"node03": {
+				addr: "address02",
+			},
+		}, result)
 
 	})
 
-	t.Run("left-nodes-not-in-configured", func(t *testing.T) {
+	t.Run("left-nodes-not-in-configured-not-expired", func(t *testing.T) {
 		nodes := map[string]nodeState{
 			"node01": {
 				status: nodeStatusGracefulLeft,
@@ -346,13 +376,47 @@ func TestNodeJoin(t *testing.T) {
 			nil, mustParse("2021-07-26T10:00:27+07:00"), 30*time.Second)
 
 		assert.Equal(t, map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+			"node02": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+			},
 			"node03": {
 				addr: "address02",
 			},
 		}, result)
 	})
 
-	t.Run("join-node-with-same-addr", func(t *testing.T) {
+	t.Run("left-nodes-not-in-configured-both-expired", func(t *testing.T) {
+		nodes := map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+			"node02": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+			},
+		}
+
+		result := nodeJoin(nodes, "node03", "address02",
+			nil, mustParse("2021-07-26T10:00:31+07:00"), 30*time.Second)
+
+		assert.Equal(t, map[string]nodeState{
+			"node03": {
+				addr: "address02",
+			},
+		}, result)
+	})
+
+	t.Run("join-node-with-same-addr-not-expired", func(t *testing.T) {
 		nodes := map[string]nodeState{
 			"node01": {
 				status: nodeStatusGracefulLeft,
@@ -370,8 +434,44 @@ func TestNodeJoin(t *testing.T) {
 			[]string{"address01"}, mustParse("2021-07-26T10:00:29+07:00"), 30*time.Second)
 
 		assert.Equal(t, map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+			"node02": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+			},
 			"node03": {
-				addr: "address01",
+				status: nodeStatusAlive,
+				addr:   "address01",
+			},
+		}, result)
+	})
+
+	t.Run("join-node-with-same-addr-both-expired", func(t *testing.T) {
+		nodes := map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+			"node02": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+			},
+		}
+
+		result := nodeJoin(nodes, "node03", "address01",
+			[]string{"address01"}, mustParse("2021-07-26T10:00:31+07:00"), 30*time.Second)
+
+		assert.Equal(t, map[string]nodeState{
+			"node03": {
+				status: nodeStatusAlive,
+				addr:   "address01",
 			},
 		}, result)
 	})
@@ -379,7 +479,7 @@ func TestNodeJoin(t *testing.T) {
 
 func TestNodeGracefulLeave(t *testing.T) {
 	t.Run("from-empty", func(t *testing.T) {
-		result := nodeGracefulLeave(nil, "node01", "address01",
+		result, changed := nodeGracefulLeave(nil, "node01", "address01",
 			[]string{"address01"}, mustParse("2021-07-26T10:00:00+07:00"), 30*time.Second)
 
 		assert.Equal(t, map[string]nodeState{
@@ -389,6 +489,7 @@ func TestNodeGracefulLeave(t *testing.T) {
 				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
 			},
 		}, result)
+		assert.Equal(t, true, changed)
 	})
 
 	t.Run("single-node-in-configured", func(t *testing.T) {
@@ -398,7 +499,7 @@ func TestNodeGracefulLeave(t *testing.T) {
 				addr:   "address01",
 			},
 		}
-		result := nodeGracefulLeave(nodes, "node01", "address01",
+		result, changed := nodeGracefulLeave(nodes, "node01", "address01",
 			[]string{"address01"}, mustParse("2021-07-26T10:00:00+07:00"), 30*time.Second)
 
 		assert.Equal(t, map[string]nodeState{
@@ -408,6 +509,7 @@ func TestNodeGracefulLeave(t *testing.T) {
 				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
 			},
 		}, result)
+		assert.Equal(t, true, changed)
 	})
 
 	t.Run("single-node-not-in-configured", func(t *testing.T) {
@@ -417,10 +519,38 @@ func TestNodeGracefulLeave(t *testing.T) {
 				addr:   "address01",
 			},
 		}
-		result := nodeGracefulLeave(nodes, "node01", "address01",
+		result, changed := nodeGracefulLeave(nodes, "node01", "address01",
 			nil, mustParse("2021-07-26T10:00:00+07:00"), 30*time.Second)
 
-		assert.Equal(t, map[string]nodeState{}, result)
+		assert.Equal(t, map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+		}, result)
+		assert.Equal(t, true, changed)
+	})
+
+	t.Run("not-changed", func(t *testing.T) {
+		nodes := map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+		}
+		result, changed := nodeGracefulLeave(nodes, "node01", "address01",
+			nil, mustParse("2021-07-26T10:00:20+07:00"), 30*time.Second)
+
+		assert.Equal(t, map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+		}, result)
+		assert.Equal(t, false, changed)
 	})
 }
 
@@ -463,5 +593,19 @@ func TestNodeLeave(t *testing.T) {
 				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
 			},
 		}, result)
+	})
+
+	t.Run("single-node-graceful-left-not-in-config-expired", func(t *testing.T) {
+		nodes := map[string]nodeState{
+			"node01": {
+				status: nodeStatusGracefulLeft,
+				addr:   "address01",
+				leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+			},
+		}
+		result := nodeLeave(nodes, "node01",
+			nil, mustParse("2021-07-26T10:00:30+07:00"), 30*time.Second)
+
+		assert.Equal(t, map[string]nodeState{}, result)
 	})
 }
