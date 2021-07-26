@@ -22,6 +22,10 @@ type nodeListener interface {
 	onJoinCompleted()
 }
 
+type nodeBroadcast interface {
+	broadcast(msg nodeLeftMsg)
+}
+
 // Timer ...
 type Timer interface {
 	Reset()
