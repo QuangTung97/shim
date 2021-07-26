@@ -3,7 +3,7 @@ package shim
 // PartitionID ...
 type PartitionID uint32
 
-//go:generate moq -out shim_mocks_test.go . PartitionRunner NodeDelegate nodeListener
+//go:generate moq -out shim_mocks_test.go . PartitionRunner NodeDelegate nodeListener nodeBroadcaster
 
 // PartitionRunner ...
 type PartitionRunner interface {
@@ -17,12 +17,17 @@ type NodeDelegate interface {
 	Leave()
 }
 
+type nodeInfo struct {
+	name string
+	addr string
+}
+
 type nodeListener interface {
-	onChange(nodes []string)
+	onChange(nodes []nodeInfo)
 	onJoinCompleted()
 }
 
-type nodeBroadcast interface {
+type nodeBroadcaster interface {
 	broadcast(msg nodeLeftMsg)
 }
 

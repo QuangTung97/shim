@@ -28,6 +28,7 @@ type nodeJoinManager struct {
 	mut sync.Mutex
 
 	listener           nodeListener
+	broadcaster        nodeBroadcaster
 	gracefulLeftExpire time.Duration
 
 	knownAddrs []string
@@ -43,11 +44,13 @@ type nodeJoinManager struct {
 }
 
 func newNodeJoinManager(
-	selfNode string, selfAddr string, listener nodeListener,
+	selfNode string, selfAddr string,
+	listener nodeListener, broadcaster nodeBroadcaster,
 	opts serviceOptions,
 ) *nodeJoinManager {
 	return &nodeJoinManager{
 		listener:           listener,
+		broadcaster:        broadcaster,
 		gracefulLeftExpire: 30 * time.Second,
 
 		knownAddrs: removeSelfAddrInConfiguredStaticAddrs(opts.staticAddrs, selfAddr),
@@ -89,6 +92,25 @@ func (m *nodeJoinManager) needJoin() ([]string, uint64) {
 	return joinAddrs, m.version
 }
 
+func (m *nodeJoinManager) callOnChange() {
+	nodes := make([]nodeInfo, 0, len(m.nodes)+1)
+	nodes = append(nodes, nodeInfo{
+		name: m.selfNode,
+		addr: m.selfAddr,
+	})
+	for nodeName, n := range m.nodes {
+		// TODO filter out graceful left nodes
+		nodes = append(nodes, nodeInfo{
+			name: nodeName,
+			addr: n.addr,
+		})
+	}
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].name < nodes[j].name
+	})
+	m.listener.onChange(nodes)
+}
+
 func (m *nodeJoinManager) notifyJoin(name string, addr string) {
 	m.mut.Lock()
 	defer m.mut.Unlock()
@@ -96,14 +118,7 @@ func (m *nodeJoinManager) notifyJoin(name string, addr string) {
 	m.version++
 	m.nodes = nodeJoin(m.nodes, name, addr, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
 
-	nodes := make([]string, 0, len(m.nodes)+1)
-	nodes = append(nodes, m.selfNode)
-	for n := range m.nodes {
-		// TODO graceful left nodes
-		nodes = append(nodes, n)
-	}
-	sort.Strings(nodes)
-	m.listener.onChange(nodes)
+	m.callOnChange()
 }
 
 func (m *nodeJoinManager) notifyLeave(name string) {
@@ -112,6 +127,8 @@ func (m *nodeJoinManager) notifyLeave(name string) {
 
 	m.version++
 	m.nodes = nodeLeave(m.nodes, name, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
+
+	// TODO on change
 }
 
 func (m *nodeJoinManager) joinCompleted() {
@@ -132,8 +149,9 @@ func (m *nodeJoinManager) notifyMsg(msg nodeLeftMsg) {
 	m.nodes, changed = nodeGracefulLeave(m.nodes, msg.name, msg.addr, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
 
 	if changed {
-		// TODO node changed
+		m.broadcaster.broadcast(msg)
 	}
+	// TODO on change
 }
 
 func removeSelfAddrInConfiguredStaticAddrs(configured []string, selfAddr string) []string {

@@ -8,7 +8,7 @@ import (
 
 func TestNodeJoinManager_WithStaticAddrs(t *testing.T) {
 	m := newNodeJoinManager(
-		"self-node", "address01", nil,
+		"self-node", "address01", nil, nil,
 		computeOptions(WithStaticAddresses([]string{"address01", "address02", "address03"})),
 	)
 
@@ -19,7 +19,7 @@ func TestNodeJoinManager_WithStaticAddrs(t *testing.T) {
 
 func TestNodeJoinManager_WithStaticAddrs_Itself(t *testing.T) {
 	m := newNodeJoinManager(
-		"self-node", "address01", nil,
+		"self-node", "address01", nil, nil,
 		computeOptions(WithStaticAddresses([]string{"address01"})),
 	)
 
@@ -30,7 +30,7 @@ func TestNodeJoinManager_WithStaticAddrs_Itself(t *testing.T) {
 
 func TestNodeJoinManager_WithNoStaticAddrs(t *testing.T) {
 	m := newNodeJoinManager(
-		"self-node", "address01", nil,
+		"self-node", "address01", nil, nil,
 		computeOptions(WithStaticAddresses(nil)),
 	)
 
@@ -42,7 +42,7 @@ func TestNodeJoinManager_WithNoStaticAddrs(t *testing.T) {
 func TestNodeJoinManager_Join_Completed_All_Nodes(t *testing.T) {
 	listener := &nodeListenerMock{}
 	m := newNodeJoinManager(
-		"self-node", "address01", listener,
+		"self-node", "address01", listener, nil,
 		computeOptions(WithStaticAddresses([]string{"address02", "address03"})),
 	)
 
@@ -50,12 +50,15 @@ func TestNodeJoinManager_Join_Completed_All_Nodes(t *testing.T) {
 	assert.Equal(t, []string{"address02", "address03"}, joinAddrs)
 	assert.Equal(t, uint64(0), version)
 
-	var listenNodes []string
-	listener.onChangeFunc = func(nodes []string) { listenNodes = nodes }
+	var listenNodes []nodeInfo
+	listener.onChangeFunc = func(nodes []nodeInfo) { listenNodes = nodes }
 	m.notifyJoin("other02", "address02")
 
 	assert.Equal(t, 1, len(listener.onChangeCalls()))
-	assert.Equal(t, []string{"other02", "self-node"}, listenNodes)
+	assert.Equal(t, []nodeInfo{
+		{name: "other02", addr: "address02"},
+		{name: "self-node", addr: "address01"},
+	}, listenNodes)
 
 	joinAddrs, version = m.needJoin()
 	assert.Equal(t, []string(nil), joinAddrs)
@@ -64,7 +67,11 @@ func TestNodeJoinManager_Join_Completed_All_Nodes(t *testing.T) {
 	m.notifyJoin("other01", "address03")
 
 	assert.Equal(t, 2, len(listener.onChangeCalls()))
-	assert.Equal(t, []string{"other01", "other02", "self-node"}, listenNodes)
+	assert.Equal(t, []nodeInfo{
+		{name: "other01", addr: "address03"},
+		{name: "other02", addr: "address02"},
+		{name: "self-node", addr: "address01"},
+	}, listenNodes)
 
 	joinAddrs, version = m.needJoin()
 	assert.Equal(t, []string(nil), joinAddrs)
@@ -79,7 +86,7 @@ func TestNodeJoinManager_Join_Completed_All_Nodes(t *testing.T) {
 func TestNodeJoinManager_Join_Completed_Missing_Node(t *testing.T) {
 	listener := &nodeListenerMock{}
 	m := newNodeJoinManager(
-		"self-node", "address01", listener,
+		"self-node", "address01", listener, nil,
 		computeOptions(WithStaticAddresses([]string{"address03", "address02"})),
 	)
 
@@ -87,11 +94,14 @@ func TestNodeJoinManager_Join_Completed_Missing_Node(t *testing.T) {
 	assert.Equal(t, []string{"address02", "address03"}, joinAddrs)
 	assert.Equal(t, uint64(0), version)
 
-	var listenNodes []string
-	listener.onChangeFunc = func(nodes []string) { listenNodes = nodes }
+	var listenNodes []nodeInfo
+	listener.onChangeFunc = func(nodes []nodeInfo) { listenNodes = nodes }
 	m.notifyJoin("other01", "address02")
 
-	assert.Equal(t, []string{"other01", "self-node"}, listenNodes)
+	assert.Equal(t, []nodeInfo{
+		{name: "other01", addr: "address02"},
+		{name: "self-node", addr: "address01"},
+	}, listenNodes)
 
 	joinAddrs, version = m.needJoin()
 	assert.Equal(t, []string(nil), joinAddrs)
@@ -109,20 +119,27 @@ func TestNodeJoinManager_Join_Completed_Missing_Node(t *testing.T) {
 
 func TestNodeJoinManager_Notify_Left_Msg(t *testing.T) {
 	listener := &nodeListenerMock{}
+	broadcast := &nodeBroadcasterMock{}
+
 	m := newNodeJoinManager(
-		"self-node", "address01", listener,
+		"self-node", "address01", listener, broadcast,
 		computeOptions(WithStaticAddresses([]string{"address03", "address02"})),
 	)
 
 	m.needJoin()
 
-	listener.onChangeFunc = func(nodes []string) {}
+	listener.onChangeFunc = func(nodes []nodeInfo) {}
 
 	m.notifyJoin("other01", "address02")
 	m.notifyJoin("other02", "address03")
 
 	listener.onJoinCompletedFunc = func() {}
 	m.joinCompleted()
+
+	var broadcastMsg nodeLeftMsg
+	broadcast.broadcastFunc = func(msg nodeLeftMsg) {
+		broadcastMsg = msg
+	}
 
 	m.notifyMsg(nodeLeftMsg{
 		name: "other01",
@@ -132,18 +149,62 @@ func TestNodeJoinManager_Notify_Left_Msg(t *testing.T) {
 	joinAddrs, version := m.needJoin()
 	assert.Equal(t, uint64(3), version)
 	assert.Equal(t, []string(nil), joinAddrs)
+
+	assert.Equal(t, 1, len(broadcast.broadcastCalls()))
+	assert.Equal(t, nodeLeftMsg{
+		name: "other01",
+		addr: "address02",
+	}, broadcastMsg)
 }
 
-func TestNodeJoinManager_Node_Leave(t *testing.T) {
+func TestNodeJoinManager_Notify_Left_Msg_Second_Time(t *testing.T) {
 	listener := &nodeListenerMock{}
+	broadcast := &nodeBroadcasterMock{}
+
 	m := newNodeJoinManager(
-		"self-node", "address01", listener,
+		"self-node", "address01", listener, broadcast,
 		computeOptions(WithStaticAddresses([]string{"address03", "address02"})),
 	)
 
 	m.needJoin()
 
-	listener.onChangeFunc = func(nodes []string) {}
+	listener.onChangeFunc = func(nodes []nodeInfo) {}
+
+	m.notifyJoin("other01", "address02")
+	m.notifyJoin("other02", "address03")
+
+	listener.onJoinCompletedFunc = func() {}
+	m.joinCompleted()
+
+	broadcast.broadcastFunc = func(msg nodeLeftMsg) {}
+	m.notifyMsg(nodeLeftMsg{
+		name: "other01",
+		addr: "address02",
+	})
+
+	joinAddrs, version := m.needJoin()
+	assert.Equal(t, uint64(3), version)
+	assert.Equal(t, []string(nil), joinAddrs)
+
+	assert.Equal(t, 1, len(broadcast.broadcastCalls()))
+
+	m.notifyMsg(nodeLeftMsg{
+		name: "other01",
+		addr: "address02",
+	})
+	assert.Equal(t, 1, len(broadcast.broadcastCalls()))
+}
+
+func TestNodeJoinManager_Node_Leave(t *testing.T) {
+	listener := &nodeListenerMock{}
+	m := newNodeJoinManager(
+		"self-node", "address01", listener, nil,
+		computeOptions(WithStaticAddresses([]string{"address03", "address02"})),
+	)
+
+	m.needJoin()
+
+	listener.onChangeFunc = func(nodes []nodeInfo) {}
 
 	m.notifyJoin("other01", "address02")
 	m.notifyJoin("other02", "address03")
@@ -160,14 +221,15 @@ func TestNodeJoinManager_Node_Leave(t *testing.T) {
 
 func TestNodeJoinManager_Notify_Left_Msg_And_Then_Leave__No_Need_Join(t *testing.T) {
 	listener := &nodeListenerMock{}
+	broadcaster := &nodeBroadcasterMock{}
 	m := newNodeJoinManager(
-		"self-node", "address01", listener,
+		"self-node", "address01", listener, broadcaster,
 		computeOptions(WithStaticAddresses([]string{"address03", "address02"})),
 	)
 
 	m.needJoin()
 
-	listener.onChangeFunc = func(nodes []string) {}
+	listener.onChangeFunc = func(nodes []nodeInfo) {}
 
 	m.notifyJoin("other01", "address02")
 	m.notifyJoin("other02", "address03")
@@ -175,12 +237,14 @@ func TestNodeJoinManager_Notify_Left_Msg_And_Then_Leave__No_Need_Join(t *testing
 	listener.onJoinCompletedFunc = func() {}
 	m.joinCompleted()
 
+	broadcaster.broadcastFunc = func(msg nodeLeftMsg) {}
 	m.notifyMsg(nodeLeftMsg{name: "other01", addr: "address02"})
 	m.notifyLeave("other01")
 
 	joinAddrs, version := m.needJoin()
 	assert.Equal(t, uint64(4), version)
 	assert.Equal(t, []string(nil), joinAddrs)
+	assert.Equal(t, 1, len(broadcaster.broadcastCalls()))
 }
 
 func TestRemoveSelfAddrInConfiguredStaticAddrs(t *testing.T) {

@@ -238,7 +238,7 @@ var _ nodeListener = &nodeListenerMock{}
 //
 // 		// make and configure a mocked nodeListener
 // 		mockednodeListener := &nodeListenerMock{
-// 			onChangeFunc: func(nodes []string)  {
+// 			onChangeFunc: func(nodes []nodeInfo)  {
 // 				panic("mock out the onChange method")
 // 			},
 // 			onJoinCompletedFunc: func()  {
@@ -252,7 +252,7 @@ var _ nodeListener = &nodeListenerMock{}
 // 	}
 type nodeListenerMock struct {
 	// onChangeFunc mocks the onChange method.
-	onChangeFunc func(nodes []string)
+	onChangeFunc func(nodes []nodeInfo)
 
 	// onJoinCompletedFunc mocks the onJoinCompleted method.
 	onJoinCompletedFunc func()
@@ -262,7 +262,7 @@ type nodeListenerMock struct {
 		// onChange holds details about calls to the onChange method.
 		onChange []struct {
 			// Nodes is the nodes argument value.
-			Nodes []string
+			Nodes []nodeInfo
 		}
 		// onJoinCompleted holds details about calls to the onJoinCompleted method.
 		onJoinCompleted []struct {
@@ -273,12 +273,12 @@ type nodeListenerMock struct {
 }
 
 // onChange calls onChangeFunc.
-func (mock *nodeListenerMock) onChange(nodes []string) {
+func (mock *nodeListenerMock) onChange(nodes []nodeInfo) {
 	if mock.onChangeFunc == nil {
 		panic("nodeListenerMock.onChangeFunc: method is nil but nodeListener.onChange was just called")
 	}
 	callInfo := struct {
-		Nodes []string
+		Nodes []nodeInfo
 	}{
 		Nodes: nodes,
 	}
@@ -292,10 +292,10 @@ func (mock *nodeListenerMock) onChange(nodes []string) {
 // Check the length with:
 //     len(mockednodeListener.onChangeCalls())
 func (mock *nodeListenerMock) onChangeCalls() []struct {
-	Nodes []string
+	Nodes []nodeInfo
 } {
 	var calls []struct {
-		Nodes []string
+		Nodes []nodeInfo
 	}
 	mock.lockonChange.RLock()
 	calls = mock.calls.onChange
@@ -326,5 +326,70 @@ func (mock *nodeListenerMock) onJoinCompletedCalls() []struct {
 	mock.lockonJoinCompleted.RLock()
 	calls = mock.calls.onJoinCompleted
 	mock.lockonJoinCompleted.RUnlock()
+	return calls
+}
+
+// Ensure, that nodeBroadcasterMock does implement nodeBroadcaster.
+// If this is not the case, regenerate this file with moq.
+var _ nodeBroadcaster = &nodeBroadcasterMock{}
+
+// nodeBroadcasterMock is a mock implementation of nodeBroadcaster.
+//
+// 	func TestSomethingThatUsesnodeBroadcaster(t *testing.T) {
+//
+// 		// make and configure a mocked nodeBroadcaster
+// 		mockednodeBroadcaster := &nodeBroadcasterMock{
+// 			broadcastFunc: func(msg nodeLeftMsg)  {
+// 				panic("mock out the broadcast method")
+// 			},
+// 		}
+//
+// 		// use mockednodeBroadcaster in code that requires nodeBroadcaster
+// 		// and then make assertions.
+//
+// 	}
+type nodeBroadcasterMock struct {
+	// broadcastFunc mocks the broadcast method.
+	broadcastFunc func(msg nodeLeftMsg)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// broadcast holds details about calls to the broadcast method.
+		broadcast []struct {
+			// Msg is the msg argument value.
+			Msg nodeLeftMsg
+		}
+	}
+	lockbroadcast sync.RWMutex
+}
+
+// broadcast calls broadcastFunc.
+func (mock *nodeBroadcasterMock) broadcast(msg nodeLeftMsg) {
+	if mock.broadcastFunc == nil {
+		panic("nodeBroadcasterMock.broadcastFunc: method is nil but nodeBroadcaster.broadcast was just called")
+	}
+	callInfo := struct {
+		Msg nodeLeftMsg
+	}{
+		Msg: msg,
+	}
+	mock.lockbroadcast.Lock()
+	mock.calls.broadcast = append(mock.calls.broadcast, callInfo)
+	mock.lockbroadcast.Unlock()
+	mock.broadcastFunc(msg)
+}
+
+// broadcastCalls gets all the calls that were made to broadcast.
+// Check the length with:
+//     len(mockednodeBroadcaster.broadcastCalls())
+func (mock *nodeBroadcasterMock) broadcastCalls() []struct {
+	Msg nodeLeftMsg
+} {
+	var calls []struct {
+		Msg nodeLeftMsg
+	}
+	mock.lockbroadcast.RLock()
+	calls = mock.calls.broadcast
+	mock.lockbroadcast.RUnlock()
 	return calls
 }
