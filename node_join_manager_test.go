@@ -609,3 +609,133 @@ func TestNodeLeave(t *testing.T) {
 		assert.Equal(t, map[string]nodeState{}, result)
 	})
 }
+
+func TestCompressNodeStates(t *testing.T) {
+	table := []struct {
+		name       string
+		nodes      []addressNodeState
+		configured bool
+		now        time.Time
+		expected   []addressNodeState
+	}{
+		{
+			name: "single-alive",
+			nodes: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusAlive,
+				},
+			},
+			expected: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusAlive,
+				},
+			},
+		},
+		{
+			name: "alive-and-left-not-expired",
+			nodes: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusAlive,
+				},
+				{
+					name:   "node02",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+				},
+			},
+			now: mustParse("2021-07-26T10:00:00+07:00"),
+			expected: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusAlive,
+				},
+				{
+					name:   "node02",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+				},
+			},
+		},
+		{
+			name: "alive-and-left-expired",
+			nodes: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusAlive,
+				},
+				{
+					name:   "node02",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+				},
+			},
+			now: mustParse("2021-07-26T10:00:30+07:00"),
+			expected: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusAlive,
+				},
+			},
+		},
+		{
+			name: "multiple-expired-not-configured",
+			nodes: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+				},
+				{
+					name:   "node02",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:00+07:00"),
+				},
+			},
+			now: mustParse("2021-07-26T10:00:40+07:00"),
+		},
+		{
+			name: "multiple-expired-configured",
+			nodes: []addressNodeState{
+				{
+					name:   "node01",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:01+07:00"),
+				},
+				{
+					name:   "node02",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:02+07:00"),
+				},
+				{
+					name:   "node03",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:04+07:00"),
+				},
+				{
+					name:   "node04",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:03+07:00"),
+				},
+			},
+			configured: true,
+			now:        mustParse("2021-07-26T10:00:40+07:00"),
+			expected: []addressNodeState{
+				{
+					name:   "node03",
+					status: nodeStatusGracefulLeft,
+					leftAt: mustParse("2021-07-26T10:00:04+07:00"),
+				},
+			},
+		},
+	}
+
+	for _, e := range table {
+		t.Run(e.name, func(t *testing.T) {
+			result := compressAddressNodeStates(e.nodes, e.configured, e.now, 30*time.Second)
+			assert.Equal(t, e.expected, result)
+		})
+	}
+}

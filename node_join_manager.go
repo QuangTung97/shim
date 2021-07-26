@@ -28,8 +28,9 @@ type nodeJoinManager struct {
 	mut sync.Mutex
 
 	listener           nodeListener
-	staticAddrs        []string
 	gracefulLeftExpire time.Duration
+
+	knownAddrs []string
 
 	selfNode string
 	selfAddr string
@@ -47,8 +48,9 @@ func newNodeJoinManager(
 ) *nodeJoinManager {
 	return &nodeJoinManager{
 		listener:           listener,
-		staticAddrs:        removeSelfAddrInConfiguredStaticAddrs(opts.staticAddrs, selfAddr),
 		gracefulLeftExpire: 30 * time.Second,
+
+		knownAddrs: removeSelfAddrInConfiguredStaticAddrs(opts.staticAddrs, selfAddr),
 
 		selfNode: selfNode,
 		selfAddr: selfAddr,
@@ -76,7 +78,7 @@ func (m *nodeJoinManager) needJoin() ([]string, uint64) {
 	}
 
 	var joinAddrs []string
-	for _, a := range m.staticAddrs {
+	for _, a := range m.knownAddrs {
 		_, existed := nodeAddrSet[a]
 		if existed {
 			continue
@@ -92,7 +94,7 @@ func (m *nodeJoinManager) notifyJoin(name string, addr string) {
 	defer m.mut.Unlock()
 
 	m.version++
-	m.nodes = nodeJoin(m.nodes, name, addr, m.staticAddrs, m.getNow(), m.gracefulLeftExpire)
+	m.nodes = nodeJoin(m.nodes, name, addr, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
 
 	nodes := make([]string, 0, len(m.nodes)+1)
 	nodes = append(nodes, m.selfNode)
@@ -109,7 +111,7 @@ func (m *nodeJoinManager) notifyLeave(name string) {
 	defer m.mut.Unlock()
 
 	m.version++
-	m.nodes = nodeLeave(m.nodes, name, m.staticAddrs, m.getNow(), m.gracefulLeftExpire)
+	m.nodes = nodeLeave(m.nodes, name, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
 }
 
 func (m *nodeJoinManager) joinCompleted() {
@@ -127,10 +129,10 @@ func (m *nodeJoinManager) notifyMsg(msg nodeLeftMsg) {
 	m.version++
 
 	var changed bool
-	m.nodes, changed = nodeGracefulLeave(m.nodes, msg.name, msg.addr, m.staticAddrs, m.getNow(), m.gracefulLeftExpire)
+	m.nodes, changed = nodeGracefulLeave(m.nodes, msg.name, msg.addr, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
 
 	if changed {
-		// TODO
+		// TODO node changed
 	}
 }
 
