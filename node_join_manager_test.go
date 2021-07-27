@@ -141,10 +141,20 @@ func TestNodeJoinManager_Notify_Left_Msg(t *testing.T) {
 		broadcastMsg = msg
 	}
 
+	var changeNodes []nodeInfo
+	listener.onChangeFunc = func(nodes []nodeInfo) {
+		changeNodes = nodes
+	}
 	m.notifyMsg(nodeLeftMsg{
 		name: "other01",
 		addr: "address02",
 	})
+
+	assert.Equal(t, 3, len(listener.onChangeCalls()))
+	assert.Equal(t, []nodeInfo{
+		{name: "other02", addr: "address03"},
+		{name: "self-node", addr: "address01"},
+	}, changeNodes)
 
 	joinAddrs, version := m.needJoin()
 	assert.Equal(t, uint64(3), version)
@@ -182,6 +192,8 @@ func TestNodeJoinManager_Notify_Left_Msg_Second_Time(t *testing.T) {
 		addr: "address02",
 	})
 
+	assert.Equal(t, 3, len(listener.onChangeCalls()))
+
 	joinAddrs, version := m.needJoin()
 	assert.Equal(t, uint64(3), version)
 	assert.Equal(t, []string(nil), joinAddrs)
@@ -193,6 +205,8 @@ func TestNodeJoinManager_Notify_Left_Msg_Second_Time(t *testing.T) {
 		addr: "address02",
 	})
 	assert.Equal(t, 1, len(broadcast.broadcastCalls()))
+
+	assert.Equal(t, 3, len(listener.onChangeCalls()))
 }
 
 func TestNodeJoinManager_Node_Leave(t *testing.T) {
@@ -204,7 +218,10 @@ func TestNodeJoinManager_Node_Leave(t *testing.T) {
 
 	m.needJoin()
 
-	listener.onChangeFunc = func(nodes []nodeInfo) {}
+	var changeNodes []nodeInfo
+	listener.onChangeFunc = func(nodes []nodeInfo) {
+		changeNodes = nodes
+	}
 
 	m.notifyJoin("other01", "address02")
 	m.notifyJoin("other02", "address03")
@@ -213,6 +230,12 @@ func TestNodeJoinManager_Node_Leave(t *testing.T) {
 	m.joinCompleted()
 
 	m.notifyLeave("other01")
+
+	assert.Equal(t, 3, len(listener.onChangeCalls()))
+	assert.Equal(t, []nodeInfo{
+		{name: "other02", addr: "address03"},
+		{name: "self-node", addr: "address01"},
+	}, changeNodes)
 
 	joinAddrs, version := m.needJoin()
 	assert.Equal(t, uint64(3), version)

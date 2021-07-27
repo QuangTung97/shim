@@ -99,7 +99,10 @@ func (m *nodeJoinManager) callOnChange() {
 		addr: m.selfAddr,
 	})
 	for nodeName, n := range m.nodes {
-		// TODO filter out graceful left nodes
+		if n.status != nodeStatusAlive {
+			continue
+		}
+
 		nodes = append(nodes, nodeInfo{
 			name: nodeName,
 			addr: n.addr,
@@ -128,7 +131,7 @@ func (m *nodeJoinManager) notifyLeave(name string) {
 	m.version++
 	m.nodes = nodeLeave(m.nodes, name, m.knownAddrs, m.getNow(), m.gracefulLeftExpire)
 
-	// TODO on change
+	m.callOnChange()
 }
 
 func (m *nodeJoinManager) joinCompleted() {
@@ -150,8 +153,8 @@ func (m *nodeJoinManager) notifyMsg(msg nodeLeftMsg) {
 
 	if changed {
 		m.broadcaster.broadcast(msg)
+		m.callOnChange()
 	}
-	// TODO on change
 }
 
 func removeSelfAddrInConfiguredStaticAddrs(configured []string, selfAddr string) []string {
